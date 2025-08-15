@@ -1,0 +1,11 @@
+node_modules/
+downloads/
+/sessions/
+*.session
+.env
+.DS_Store
+.env
+/node_modules
+/.vscode
+package-lock.json
+cookies/
