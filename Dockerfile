@@ -34,6 +34,7 @@ ENV CHROME_PATH=/usr/bin/chromium-browser
 ENV CHROMIUM_PATH=/usr/bin/chromium-browser
 
 # Volume for cookies (mount at runtime)
+
 VOLUME /app/cookies
 
 # Expose the app port
