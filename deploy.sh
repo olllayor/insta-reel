@@ -1,16 +1,25 @@
 #!/bin/bash
 
-# Production Deployment Script for Instagram Downloader
+# Production Deployment Script for Instagram Downloader (with sudo detection)
 
 set -e  # Exit on any error
 
 echo "🚀 Starting production deployment..."
 
-# Check if Docker is running
+# Determine if docker requires sudo
+SUDO=""
 if ! docker info >/dev/null 2>&1; then
-    echo "❌ Docker is not running. Please start Docker and try again."
-    exit 1
+    if sudo docker info >/dev/null 2>&1; then
+        SUDO="sudo"
+        echo "🔐 Docker requires sudo; using sudo for docker commands."
+    else
+        echo "❌ Docker is not running or not accessible. Please start Docker and try again."
+        exit 1
+    fi
 fi
+
+# Build docker command prefix (either "docker" or "sudo docker")
+DOCKER_CMD="${SUDO:+$SUDO }docker"
 
 # Check if cookies file exists
 if [ ! -f "./cookies/instagram.com_cookies.txt" ]; then
@@ -30,19 +39,19 @@ fi
 
 # Pull latest images
 echo "📦 Pulling latest base images..."
-docker compose -f docker-compose.prod.yml pull redis
+$DOCKER_CMD compose -f docker-compose.prod.yml pull redis
 
 # Build the application
 echo "🔨 Building application..."
-docker compose -f docker-compose.prod.yml build --no-cache app
+$DOCKER_CMD compose -f docker-compose.prod.yml build --no-cache app
 
 # Stop existing containers
 echo "🛑 Stopping existing containers..."
-docker compose -f docker-compose.prod.yml down
+$DOCKER_CMD compose -f docker-compose.prod.yml down
 
 # Start services
 echo "🌟 Starting services..."
-docker compose -f docker-compose.prod.yml up -d
+$DOCKER_CMD compose -f docker-compose.prod.yml up -d
 
 # Wait for services to be ready
 echo "⏳ Waiting for services to start..."
@@ -55,7 +64,7 @@ if curl -f http://localhost:3000/ >/dev/null 2>&1; then
 else
     echo "❌ Service health check failed"
     echo "📋 Checking logs..."
-    docker compose -f docker-compose.prod.yml logs app
+    $DOCKER_CMD compose -f docker-compose.prod.yml logs app
     exit 1
 fi
 
@@ -73,11 +82,11 @@ fi
 echo ""
 echo "🎉 Deployment completed successfully!"
 echo "📊 Service status:"
-docker compose -f docker-compose.prod.yml ps
+$DOCKER_CMD compose -f docker-compose.prod.yml ps
 
 echo ""
 echo "📋 Useful commands:"
-echo "   View logs:     docker compose -f docker-compose.prod.yml logs -f"
-echo "   Stop services: docker compose -f docker-compose.prod.yml down"
+echo "   View logs:     $DOCKER_CMD compose -f docker-compose.prod.yml logs -f"
+echo "   Stop services: $DOCKER_CMD compose -f docker-compose.prod.yml down"
 echo "   Check status:  curl http://localhost:3000/status"
-echo "   Refresh cookies: docker compose -f docker-compose.prod.yml exec app npm run refresh-cookies"
+echo "   Refresh cookies: $DOCKER_CMD compose -f docker-compose.prod.yml exec app npm run refresh-cookies"
