@@ -75,8 +75,12 @@ function extractCacheKey(url) {
 }
 
 app.post('/download', async (req, res) => {
+	// Declare variables outside try so they are accessible in catch (for logging)
+	let cacheKey = null;
+	let reelURL = null;
+	let postURL = null;
 	try {
-		const reelURL = String(req.body?.reelURL || '').trim();
+		reelURL = String(req.body?.reelURL || '').trim();
 		if (!reelURL || !instagramUrlRegex.test(reelURL)) {
 			return res
 				.status(400)
@@ -84,8 +88,8 @@ app.post('/download', async (req, res) => {
 		}
 
 		// convert reels to /p/ for yt-dlp if possible; leave stories untouched
-		const postURL = convertReelToPostUrl(reelURL);
-		const cacheKey = extractCacheKey(postURL);
+		postURL = convertReelToPostUrl(reelURL);
+		cacheKey = extractCacheKey(postURL);
 
 		// check cache
 		const cachedData = await redis.get(cacheKey);
@@ -215,8 +219,9 @@ app.post('/download', async (req, res) => {
 		});
 	} catch (err) {
 		const errorDetails = {
-			cacheKey: cacheKey || 'unknown',
-			originalUrl: req.body?.reelURL || 'unknown',
+			cacheKey: cacheKey || 'uninitialized',
+			originalUrl: reelURL || req.body?.reelURL || 'unavailable',
+			postURL: postURL || 'uninitialized',
 			errorMessage: err?.message || String(err),
 			errorStack: err?.stack || 'no stack trace',
 			timestamp: new Date().toISOString(),
@@ -228,6 +233,7 @@ app.post('/download', async (req, res) => {
 			error: 'Download failed',
 			details: err?.message || String(err),
 			timestamp: errorDetails.timestamp,
+			cacheKey: errorDetails.cacheKey,
 		});
 	}
 });
