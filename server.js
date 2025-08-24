@@ -42,6 +42,19 @@ app.get('/', (req, res) => {
 	res.json({ ok: true, service: 'yt-dlp-proxy' });
 });
 
+// Rate limit status endpoint
+app.get('/status', (req, res) => {
+	res.json({
+		ok: true,
+		service: 'yt-dlp-proxy',
+		cookies: {
+			path: COOKIES_PATH,
+			exists: existsSync(COOKIES_PATH),
+		},
+		yt_dlp_version: 'latest',
+	});
+});
+
 /**
  * Regex and helpers:
  * - Accept /p/, /reel/, /reels/, /stories/
@@ -79,6 +92,7 @@ app.post('/download', async (req, res) => {
 	let cacheKey = null;
 	let reelURL = null;
 	let postURL = null;
+
 	try {
 		reelURL = String(req.body?.reelURL || '').trim();
 		if (!reelURL || !instagramUrlRegex.test(reelURL)) {
@@ -129,49 +143,174 @@ app.post('/download', async (req, res) => {
 		}
 		console.log(`Cache miss: ${cacheKey} -> fetching via yt-dlp`);
 
-		// Enhanced yt-dlp args with better format selection and user-agent
-		// Note: stories often require valid logged-in cookies
-		const customUserAgent =
-			'Mozilla/5.0 (iPhone; CPU iPhone OS 16_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.6 Mobile/15E148 Safari/604.1';
-
-		const args = [
-			'-g', // Get URL only
-			'-f',
-			'best[height<=1080]/best', // Best quality up to 1080p, fallback to best available
-			'--user-agent',
-			customUserAgent, // Custom user-agent to avoid detection
-			'--cookies',
-			COOKIES_PATH, // Use cookies file
-			'--no-warnings', // Reduce noise in stderr
-			postURL,
+		// Multiple user agents to rotate
+		const userAgents = [
+			'Mozilla/5.0 (iPhone; CPU iPhone OS 16_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.6 Mobile/15E148 Safari/604.1',
+			'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1',
+			'Mozilla/5.0 (Linux; Android 13; SM-G998B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/112.0.0.0 Mobile Safari/537.36',
+			'Mozilla/5.0 (Linux; Android 12; Pixel 6) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/111.0.0.0 Mobile Safari/537.36',
 		];
 
-		console.log(`yt-dlp attempt for ${cacheKey}:`, {
-			url: postURL,
-			userAgent: customUserAgent.substring(0, 50) + '...',
-			format: 'best[height<=1080]/best',
-		});
+		// Pick random user agent
+		const customUserAgent = userAgents[Math.floor(Math.random() * userAgents.length)];
 
-		const startTime = Date.now();
-		const { stdout, stderr } = await execFileAsync('yt-dlp', args, {
-			timeout: 60_000,
-			maxBuffer: 10 * 1024 * 1024,
-		});
-		const duration = Date.now() - startTime;
+		// Enhanced strategies with better cookie handling and fresh session management
+		const strategies = [
+			{
+				name: 'fresh_browser_cookies',
+				description: 'Extract fresh cookies from Chrome browser',
+				args: [
+					'-g',
+					'-f',
+					'best[height<=1080]/best',
+					'--cookies-from-browser',
+					'chrome',
+					'--user-agent',
+					customUserAgent,
+					'--no-warnings',
+					'--extractor-args',
+					'instagram:api_version=web',
+					postURL,
+				],
+			},
+			{
+				name: 'file_cookies_enhanced',
+				description: 'Use cookies file with enhanced session handling',
+				args: [
+					'-g',
+					'-f',
+					'best[height<=1080]/best',
+					'--cookies',
+					COOKIES_PATH,
+					'--user-agent',
+					customUserAgent,
+					'--no-warnings',
+					'--extractor-args',
+					'instagram:api_version=web',
+					'--add-headers',
+					'X-Instagram-AJAX:1',
+					'--add-headers',
+					'X-Requested-With:XMLHttpRequest',
+					postURL,
+				],
+			},
+			{
+				name: 'firefox_fallback',
+				description: 'Try Firefox browser cookies',
+				args: [
+					'-g',
+					'-f',
+					'best[height<=1080]/best',
+					'--cookies-from-browser',
+					'firefox',
+					'--user-agent',
+					customUserAgent,
+					'--no-warnings',
+					'--extractor-args',
+					'instagram:api_version=web',
+					postURL,
+				],
+			},
+			{
+				name: 'embed_only',
+				description: 'Use embed page extraction (no login required)',
+				args: [
+					'-g',
+					'-f',
+					'best/worst',
+					'--user-agent',
+					customUserAgent,
+					'--no-warnings',
+					'--referer',
+					'https://www.instagram.com/',
+					'--add-headers',
+					'Sec-Fetch-Dest:iframe',
+					'--add-headers',
+					'Sec-Fetch-Mode:navigate',
+					postURL,
+				],
+			},
+		];
 
-		console.log(`yt-dlp execution completed in ${duration}ms`, {
-			cacheKey,
-			stdoutLength: stdout?.length || 0,
-			stderrLength: stderr?.length || 0,
-		});
+		let lastError = null;
+		let stdout = null;
+		let stderr = null;
+		let duration = 0;
+		let usedStrategy = null;
 
-		if (stderr) {
-			console.log(`yt-dlp stderr for ${cacheKey}:`, stderr.trim());
+		// Try each strategy with exponential backoff
+		for (let i = 0; i < strategies.length; i++) {
+			const strategy = strategies[i];
+			try {
+				console.log(`yt-dlp ${strategy.name} attempt for ${cacheKey}:`, {
+					url: postURL,
+					userAgent: customUserAgent.substring(0, 50) + '...',
+					strategy: strategy.name,
+					description: strategy.description,
+				});
+
+				const startTime = Date.now();
+				const result = await execFileAsync('yt-dlp', strategy.args, {
+					timeout: 120_000, // 2 minutes timeout
+					maxBuffer: 15 * 1024 * 1024,
+				});
+				duration = Date.now() - startTime;
+				stdout = result.stdout;
+				stderr = result.stderr;
+				usedStrategy = strategy.name;
+
+				console.log(`yt-dlp ${strategy.name} execution completed in ${duration}ms`, {
+					cacheKey,
+					stdoutLength: stdout?.length || 0,
+					stderrLength: stderr?.length || 0,
+				});
+
+				if (stderr && stderr.includes('WARNING')) {
+					console.log(`yt-dlp ${strategy.name} warnings for ${cacheKey}:`, stderr.trim());
+				}
+
+				// If we got valid output, break the loop
+				if (stdout && typeof stdout === 'string' && stdout.trim()) {
+					const testUrls = stdout
+						.trim()
+						.split('\n')
+						.filter((l) => /^https?:\/\//i.test(l.trim()));
+					if (testUrls.length > 0) {
+						console.log(`yt-dlp ${strategy.name} strategy succeeded for ${cacheKey}`);
+						break;
+					}
+				}
+
+				// If no URLs found but no error, continue to next strategy
+				console.log(`yt-dlp ${strategy.name} returned no URLs for ${cacheKey}, trying next strategy...`);
+			} catch (err) {
+				lastError = err;
+				console.log(`yt-dlp ${strategy.name} strategy failed for ${cacheKey}:`, {
+					error: err.message,
+					stderr: err.stderr || 'no stderr',
+				});
+
+				// Add small delay between strategies to avoid rapid requests
+				if (i < strategies.length - 1) {
+					console.log(`Waiting 2s before trying next strategy for ${cacheKey}...`);
+					await new Promise((resolve) => setTimeout(resolve, 2000));
+					continue;
+				}
+			}
 		}
 
 		if (!stdout || typeof stdout !== 'string') {
-			console.error('yt-dlp no stdout', { cacheKey, stderr });
-			throw new Error('yt-dlp returned no output');
+			console.error('yt-dlp no stdout after all strategies', {
+				cacheKey,
+				stderr,
+				lastError: lastError?.message,
+				strategiesTried: strategies.map((s) => s.name),
+			});
+			throw new Error(
+				`yt-dlp returned no output after trying ${strategies.length} strategies. Last error: ${
+					lastError?.message || 'unknown'
+				}`,
+			);
 		}
 
 		const urls = stdout
@@ -182,14 +321,20 @@ app.post('/download', async (req, res) => {
 
 		const downloadUrl = urls.length ? urls[urls.length - 1] : null;
 		if (!downloadUrl) {
-			console.error('No download url found', { cacheKey, stdout, stderr });
-			throw new Error('No download URL found from yt-dlp');
+			console.error('No download url found after all strategies', {
+				cacheKey,
+				stdout,
+				stderr,
+				strategiesTried: strategies.map((s) => s.name),
+			});
+			throw new Error(`No download URL found from yt-dlp after trying ${strategies.length} strategies`);
 		}
 
 		console.log(`yt-dlp success for ${cacheKey}:`, {
 			downloadUrl: downloadUrl.substring(0, 100) + '...',
 			totalUrls: urls.length,
 			duration: `${duration}ms`,
+			usedStrategy,
 		});
 
 		// Enhanced cache data with metadata
@@ -200,6 +345,8 @@ app.post('/download', async (req, res) => {
 			duration,
 			format: 'best[height<=1080]/best',
 			userAgent: customUserAgent.substring(0, 50) + '...',
+			strategy: usedStrategy,
+			urlCount: urls.length,
 		};
 
 		// cache (20 days). NOTE: direct urls can expire sooner — see suggestions below.
@@ -214,24 +361,53 @@ app.post('/download', async (req, res) => {
 				extractedAt: cacheData.extractedAt,
 				duration: cacheData.duration,
 				format: cacheData.format,
+				strategy: cacheData.strategy,
 				cached: false,
 			},
 		});
 	} catch (err) {
+		const errorMessage = err?.message || String(err);
+
+		// Categorize Instagram-specific errors
+		let errorCategory = 'unknown';
+		let userFriendlyMessage = 'Download failed. Please try again later.';
+		let statusCode = 500;
+
+		if (errorMessage.includes('rate-limit reached') || errorMessage.includes('429')) {
+			errorCategory = 'rate_limit';
+			userFriendlyMessage = 'Instagram rate limit reached. Please wait a few minutes before trying again.';
+			statusCode = 429;
+		} else if (errorMessage.includes('login required') || errorMessage.includes('authentication')) {
+			errorCategory = 'authentication';
+			userFriendlyMessage = 'Authentication required. This content may be private or require login.';
+			statusCode = 403;
+		} else if (errorMessage.includes('not available') || errorMessage.includes('404')) {
+			errorCategory = 'not_found';
+			userFriendlyMessage = 'Content not found or has been deleted.';
+			statusCode = 404;
+		} else if (errorMessage.includes('timeout')) {
+			errorCategory = 'timeout';
+			userFriendlyMessage = 'Request timed out. Instagram may be slow, please try again.';
+			statusCode = 408;
+		}
+
 		const errorDetails = {
+			category: errorCategory,
 			cacheKey: cacheKey || 'uninitialized',
 			originalUrl: reelURL || req.body?.reelURL || 'unavailable',
 			postURL: postURL || 'uninitialized',
-			errorMessage: err?.message || String(err),
-			errorStack: err?.stack || 'no stack trace',
+			errorMessage,
+			userFriendlyMessage,
 			timestamp: new Date().toISOString(),
 		};
 
 		console.error('Download failed:', errorDetails);
 
-		return res.status(500).json({
-			error: 'Download failed',
-			details: err?.message || String(err),
+		return res.status(statusCode).json({
+			success: false,
+			error: userFriendlyMessage,
+			category: errorCategory,
+			details: errorMessage,
 			timestamp: errorDetails.timestamp,
 			cacheKey: errorDetails.cacheKey,
 		});

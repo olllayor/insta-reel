@@ -4,7 +4,9 @@
 	"main": "downloader.js",
 	"type": "module",
 	"scripts": {
-		"start": "node server.js"
+		"start": "node server.js",
+		"refresh-cookies": "node refresh-cookies.js",
+		"test-download": "node -e \"fetch('http://localhost:3000/download', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({reelURL:'https://www.instagram.com/p/DNqAuFLM0Es/'})}).then(r=>r.json()).then(console.log)\""
 	},
 	"keywords": [],
 	"author": "",
@@ -33,6 +35,5 @@
 	},
 	"engines": {
 		"node": ">=20.0.0"
-  }
+	}
 }
-

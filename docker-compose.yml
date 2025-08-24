@@ -3,15 +3,32 @@ services:
   app:
     build: .
     ports:
-      - "3000:3000"
+      - '3000:3000'
     volumes:
       - ./cookies:/app/cookies
     environment:
       - REDIS_URL=redis://redis:6379
+      - NODE_ENV=production
+      - COOKIES_PATH=/app/cookies/instagram.com_cookies.txt
+      # Chrome/browser settings for cookie extraction
+      - CHROME_BIN=/usr/bin/chromium-browser
+      - DISPLAY=:99
     depends_on:
       - redis
+    restart: unless-stopped
+    # Add security context for browser access
+    security_opt:
+      - seccomp:unconfined
 
   redis:
-    image: redis:7-alpine 
+    image: redis:7-alpine
     ports:
-      - "6379:6379"
+      - '6379:6379'
+    restart: unless-stopped
+    # Persist Redis data
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes
+
+volumes:
+  redis_data:
