@@ -6,7 +6,9 @@
 	"scripts": {
 		"start": "node server.js",
 		"refresh-cookies": "node refresh-cookies.js",
-		"test-download": "node -e \"fetch('http://localhost:3000/download', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({reelURL:'https://www.instagram.com/p/DNqAuFLM0Es/'})}).then(r=>r.json()).then(console.log)\""
+		"test-download": "node -e \"fetch('http://localhost:3000/download', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({reelURL:'https://www.instagram.com/p/DNqAuFLM0Es/'})}).then(r=>r.json()).then(console.log)\"",
+		"test": "node test/architecture.test.js",
+		"test-architecture": "node test/architecture.test.js"
 	},
 	"keywords": [],
 	"author": "",

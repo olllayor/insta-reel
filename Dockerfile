@@ -25,8 +25,13 @@ COPY package.json pnpm-lock.yaml ./
 # Install dependencies with frozen lockfile for reproducibility
 RUN pnpm install --frozen-lockfile --prod
 
-# Copy the rest of the app code
-COPY . .
+# Copy the application source code with clean architecture
+COPY server.js ./
+COPY src/ ./src/
+COPY refresh-cookies.js ./
+
+# Create required directories
+RUN mkdir -p /app/cookies /app/test
 
 # Set Chrome environment variables for yt-dlp browser cookie extraction
 ENV CHROME_BIN=/usr/bin/chromium-browser

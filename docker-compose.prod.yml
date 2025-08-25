@@ -20,18 +20,18 @@ services:
     # Add security context for browser access
     security_opt:
       - seccomp:unconfined
-    # Resource limits for production
+    # Resource limits for production (increased for clean architecture)
     deploy:
       resources:
         limits:
           memory: 1G
-          cpus: '0.5'
+          cpus: '0.75'
         reservations:
           memory: 512M
           cpus: '0.25'
-    # Health check
+    # Enhanced health check for clean architecture
     healthcheck:
-      test: ['CMD', 'wget', '--no-verbose', '--tries=1', '--spider', 'http://localhost:3000/']
+      test: ['CMD', 'wget', '--no-verbose', '--tries=1', '--spider', 'http://localhost:3000/status']
       interval: 30s
       timeout: 10s
       retries: 3

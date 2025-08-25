@@ -1,15 +1,41 @@
+# Dependencies
 node_modules
 npm-debug.log
+
+# Git and version control
 .git
 .gitignore
+
+# Documentation (keep essential docs out of image)
 README.md
+ARCHITECTURE.md
+PRODUCTION.md
+
+# Environment files (use docker-compose env vars instead)
 .env
+.env.*
+
+# Test and coverage
 .nyc_output
 coverage
-.DS_Store
-*.log
+test/
+
+# Development files
 .vscode
 .idea
 *.swp
 *.swo
 *~
+.DS_Store
+
+# Logs
+*.log
+logs/
+
+# Deployment scripts (not needed in container)
+deploy.sh
+monitor.sh
+
+# Docker files (avoid recursion)
+Dockerfile*
+docker-compose*.yml
